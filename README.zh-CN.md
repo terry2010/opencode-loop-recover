@@ -3,118 +3,76 @@
 [![npm](https://img.shields.io/npm/v/opencode-loop-recover)](https://www.npmjs.com/package/opencode-loop-recover)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**English**: [README.md](README.md)
+[English](README.md) · 中文
 
-**模型卡壳刷屏时，帮你自动救回来。**
+> 检测模型重复输出，并在同一个 OpenCode 会话中恢复任务。
 
-如果你在 OpenCode 里跑本地或小参数模型，大概见过这种情况：模型开始一遍又一遍写同一句话（或者 `ssssss…` 刷屏），一直烧 token，直到你手动打断或者会话废掉。
+## 解决什么问题
 
-这个插件会在模型**边写边看**。一旦发现它在复读，立刻：
+模型有时会卡在重复输出里：反复写相同的词句或思考内容，回答不断变长，任务却没有进展。普通循环守卫可能只会停止生成，后续还得由你手动处理。
 
-1. **停掉**失控的生成
-2. **清理**——把复读的垃圾内容从模型视野里删掉
-3. **自动继续**原任务，顺带提醒它换个思路
+`opencode-loop-recover` 不只负责停止生成。它会检测重复内容、中断本轮生成、避免模型在下一次请求中再次看到重复尾部，并提示模型继续原任务。
 
-不用重启、不用盯梢，会话自己接着跑。
+插件同时监测用户可见的回答流和模型思考流。长时间使用本地模型或较小模型时尤其有用。
+
+## 救援流程
+
+```text
+模型开始重复输出
+        ↓
+中断本轮生成
+        ↓
+从后续请求的模型上下文中移除重复尾部
+        ↓
+在同一个会话中继续原任务
+```
+
+原始会话记录会保留；清理只影响中断后发送给模型的上下文。
 
 ## 安装
 
-`opencode.json` 里加一行：
+在 OpenCode 配置中添加插件：
 
-```jsonc
+```json
 {
   "plugins": ["opencode-loop-recover"]
 }
 ```
 
-就这一行。下次启动 OpenCode 会自动装好。
+OpenCode 启动时会安装插件。修改配置后请重启 OpenCode。
 
-## 能抓什么情况
+## 工作模式
 
-- `ssssssss…` 单字符刷屏（模型坍缩的典型症状）
-- 同一句话/同一段话反复写
-- 思考过程原地打转（反复念叨同一段分析）
-- 换个措辞反复发同一个搜索/查询
-- 散在输出里的短句复读
-
-## 三种模式
-
-```jsonc
-{
-  "plugins": [{
-    "package": "opencode-loop-recover",
-    "options": { "mode": "rescue" }
-  }]
-}
-```
+默认模式是 `rescue`。
 
 | 模式 | 行为 |
-|---|---|
-| `rescue`（默认） | 停住循环、清理、自动继续 |
-| `cut` | 只停住——交给你处理 |
-| `observe` | 只看不碰，光记日志（适合先试试） |
+| --- | --- |
+| `rescue` | 中断循环、清理后续模型上下文，并继续原任务。 |
+| `cut` | 中断循环，不自动续跑。 |
+| `observe` | 只检测和记录，不中断生成。 |
 
-## 触发时你会看到
+修改模式示例：
 
-会话里出现一条带标记的消息：
-
-```
-⛑ [loop-recover] 刚才的输出检测到重复循环，已被中断并清理。请换一种思路继续…
-```
-
-同一个会话连续救好几次还不停的话，插件会放弃自动干预并提醒你手动看看——不会跟模型死磕到底。
-
-## 全部配置项（附默认值）
-
-```jsonc
+```json
 {
-  "plugins": [{
-    "package": "opencode-loop-recover",
-    "options": {
-      "mode": "rescue",            // rescue | cut | observe
-      "detectors": {               // 单独开关某个检测器
-        "periodic": true, "ngram": true, "anchor": true,
-        "charrun": true, "pool": true, "intent": true
-      },
-      "maxRescues": 3,             // 连续救这么多次后放弃
-      "bufferChars": 8192,         // 分析多长的最近输出
-      "keepLanguage": true,        // 提醒模型保持语言
-      "language": "auto",          // auto | zh | en
-      "temperatureBump": 0.3,      // 救援后的随机扰动（0 = 关闭）
-      "rescuePrompt": "…",         // 自定义"请继续"的提示语
-      "debugLog": false,           // 或 "/path/to/debug.log" 排查问题用
-      "intent": {                  // 同一查询的重复检测
-        "toolPatterns": ["web_search"],
-        "stallLimit": 2
-      }
+  "plugins": [
+    {
+      "package": "opencode-loop-recover",
+      "options": { "mode": "observe" }
     }
-  }]
+  ]
 }
 ```
 
-## 它不管的事
+## 检测范围
 
-- 不管 shell 输出、文件内容、工具返回里的重复——只看**模型自己生成**的
-- 不碰标题生成、摘要这类辅助请求
-- 没有设置界面——所有配置都在 `opencode.json`
+- 模型回答中的重复词句或段落。
+- 模型思考流中的重复内容。
+- `ssssss...` 这类长串相同字符。
+- 重复的工具查询；检测到后会提示模型调整查询方式，而不是立即中断生成。
 
-## 常见问题
+插件只处理能够识别的重复模式，不判断答案是否正确。检测需要足够的重复内容，因此中断前可能已经显示一部分重复文本。插件不监测 shell 输出、文件内容或工具返回结果。
 
-**会不会误伤正常输出？** 很少——要连续重复好几次同一内容才会动手。不放心可以先用 `mode: "observe"` 跑几天，只看日志不干预。
-
-**云端大模型有用吗？** 能用，但主要是给容易退化的本地/小模型准备的。
-
-**会改会话记录吗？** 重复文本在记录里还在，但**模型从此看不到它**——每次后续请求都会把它从上下文里剪掉。
-
-## 开发
-
-```bash
-npm test        # 78 个测试：检测器、适配层、完整救援链
-npm run build   # 编译到 dist/
-```
-
-设计文档：[docs/design.md](docs/design.md)。检测核心与 [dsh-loop-recover](https://github.com/terry2010/dsh-loop-recover) 共用（DeepSeek Harness 的同款插件）。
-
-## License
+## 许可协议
 
 MIT
