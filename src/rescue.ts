@@ -128,13 +128,14 @@ export class RescueManager {
     messageID: string,
     ordinal: number,
     text: string,
+    stream: 'text' | 'reasoning' = 'text',
   ): Promise<LoopHit | null> {
     const hit = runDetectors(text, this.cfg)
     if (!hit) return null
 
     const w = this.watch(sessionID)
     this.ops.log(
-      `loop detected session=${sessionID} kind=${hit.kind} period=${hit.period ?? '-'} ` +
+      `loop detected session=${sessionID} stream=${stream} kind=${hit.kind} period=${hit.period ?? '-'} ` +
         `rescues=${w.rescueCount} mode=${this.cfg.mode} detail=${hit.detail}`,
     )
     if (this.cfg.mode === 'observe' || w.gaveUp) return hit
@@ -165,7 +166,7 @@ export class RescueManager {
     w.temperatureBumpPending = true
 
     await this.ops.interrupt(sessionID)
-    this.ops.log(`interrupted session=${sessionID} kind=${hit.kind}`)
+    this.ops.log(`interrupted session=${sessionID} stream=${stream} kind=${hit.kind}`)
 
     if (this.cfg.mode === 'cut') return hit
 

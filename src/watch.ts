@@ -73,7 +73,8 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
           const buf = buffers.get(p.sessionID, p.assistantMessageID, p.ordinal)
           buf.append(p.delta)
           if (buf.needsCheck()) {
-            await manager.onStreamText(p.sessionID, p.assistantMessageID, p.ordinal, buf.text())
+            const stream = event.type === 'session.reasoning.delta' ? 'reasoning' : 'text'
+            await manager.onStreamText(p.sessionID, p.assistantMessageID, p.ordinal, buf.text(), stream)
           }
           break
         }
