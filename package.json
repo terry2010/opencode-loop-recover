@@ -1,0 +1,49 @@
+{
+  "name": "opencode-loop-recover",
+  "version": "0.1.0",
+  "description": "Loop guard for OpenCode: detects model repetition mid-stream, interrupts, prunes the poisoned context, and resumes the task automatically.",
+  "type": "module",
+  "exports": {
+    "./server": "./dist/server.js",
+    ".": "./dist/server.js",
+    "./detect/detector": "./dist/detect/detector.js",
+    "./detect/intent": "./dist/detect/intent.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --input-type=module -e \"import('./dist/server.js').then(m => { const d = m.default; if (!d || !d.id || typeof d.setup !== 'function') throw new Error('default {id,setup} 缺失'); console.log('OK', d.id) })\""
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "loop",
+    "repetition",
+    "guard",
+    "stop",
+    "recover",
+    "resume",
+    "compact"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@opencode/plugin": "^2.2.5"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "^2.2.5",
+    "@types/node": "^26.6.6",
+    "typescript": "5.9"
+  }
+}
