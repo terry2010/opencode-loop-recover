@@ -31,15 +31,19 @@ The transcript is preserved. Cleanup applies to the context sent to the model af
 
 ## Install
 
-Add the plugin to your OpenCode configuration:
+```bash
+opencode plugin add opencode-loop-recover
+```
+
+This installs the npm package and writes it to your global `opencode.json` automatically. Restart OpenCode afterwards.
+
+Or edit `opencode.json` by hand:
 
 ```json
 {
   "plugins": ["opencode-loop-recover"]
 }
 ```
-
-OpenCode installs the package on startup. Restart OpenCode after changing the configuration.
 
 ## Modes
 

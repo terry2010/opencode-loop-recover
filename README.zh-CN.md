@@ -31,15 +31,19 @@
 
 ## 安装
 
-在 OpenCode 配置中添加插件：
+```bash
+opencode plugin add opencode-loop-recover
+```
+
+命令会自动安装 npm 包并写入全局 `opencode.json`，装完重启 OpenCode。
+
+也可以手动改 `opencode.json`：
 
 ```json
 {
   "plugins": ["opencode-loop-recover"]
 }
 ```
-
-OpenCode 启动时会安装插件。修改配置后请重启 OpenCode。
 
 ## 工作模式
 
