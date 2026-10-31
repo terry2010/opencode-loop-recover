@@ -68,6 +68,10 @@ opencode plugin add opencode-loop-recover
 }
 ```
 
+## 桌面端设置页
+
+OpenCode 桌面客户端里可以直接改配置：**设置 → Loop Recover**。页面提供全部选项：模式、语言、救援上限、温度扰动、各检测器开关和高级阈值。改动写回全局 `opencode.json`（保留注释），保存后插件自动重载生效。TUI 与桌面端共用同一份配置。
+
 ## 检测范围
 
 - 模型回答中的重复词句或段落。

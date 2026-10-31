@@ -61,56 +61,70 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
   const toolNames = new Map<string, string>()
   const seenTypes = new Set<string>()
 
-  // signal 只能在下一条事件到达后生效——事件源挂起时 for-await 挂起是预期行为
-  for await (const event of events) {
-    if (signal?.aborted) return
-    if (!seenTypes.has(event.type)) {
-      seenTypes.add(event.type)
-      const data = (event.data ?? event) as Record<string, unknown>
-      log(`first event type=${event.type} keys=${Object.keys(data).join(',')} delta=${JSON.stringify(data.delta)?.slice(0, 60)}`)
-    }
-    // 事件信封：{id, created, type, location?, data}——业务字段在 data 里
-    const data = (event.data ?? event) as Record<string, unknown>
-    try {
-      switch (event.type) {
-        case 'session.text.delta':
-        case 'session.reasoning.delta': {
-          const p = data as unknown as DeltaPayload
-          const buf = buffers.get(p.sessionID, p.assistantMessageID, p.ordinal)
-          buf.append(p.delta)
-          if (buf.needsCheck()) {
-            const stream = event.type === 'session.reasoning.delta' ? 'reasoning' : 'text'
-            await manager.onStreamText(p.sessionID, p.assistantMessageID, p.ordinal, buf.text(), stream)
-          }
-          break
-        }
-        case 'session.text.ended':
-        case 'session.reasoning.ended': {
-          const p = data as unknown as EndedPayload
-          buffers.drop(p.sessionID, p.assistantMessageID, p.ordinal)
-          break
-        }
-        case 'session.tool.input.started': {
-          const p = data as unknown as ToolInputStartedPayload
-          toolNames.set(`${p.sessionID}:${p.id}`, p.name)
-          break
-        }
-        case 'session.tool.called': {
-          const p = data as unknown as ToolCalledPayload
-          const name = toolNames.get(`${p.sessionID}:${p.id}`) ?? 'unknown'
-          manager.onToolCall(p.sessionID, name, p.input)
-          break
-        }
-        case 'session.deleted': {
-          const p = data as unknown as { sessionID: string }
-          manager.drop(p.sessionID)
-          buffers.dropSession(p.sessionID)
-          log(`watch dropped session=${p.sessionID}`)
-          break
-        }
+  // 挂起的 next() 不会被 abort 唤醒：插件重载时 cleanup 等待本函数返回，
+  // 手动竞速保证 teardown 可完成，否则激活会永久卡死。
+  const iterator = events[Symbol.asyncIterator]()
+  const aborted = signal
+    ? new Promise<IteratorResult<EventLike>>((resolve) => {
+        if (signal.aborted) resolve({ done: true, value: undefined })
+        else signal.addEventListener('abort', () => resolve({ done: true, value: undefined }), { once: true })
+      })
+    : undefined
+  try {
+    for (;;) {
+      const step = aborted ? await Promise.race([iterator.next(), aborted]) : await iterator.next()
+      if (step.done) return
+      const event = step.value
+      if (!seenTypes.has(event.type)) {
+        seenTypes.add(event.type)
+        const data = (event.data ?? event) as Record<string, unknown>
+        log(`first event type=${event.type} keys=${Object.keys(data).join(',')} delta=${JSON.stringify(data.delta)?.slice(0, 60)}`)
       }
-    } catch (cause) {
-      log(`event dispatch error type=${event.type}: ${cause}`)
+      // 事件信封：{id, created, type, location?, data}——业务字段在 data 里
+      const data = (event.data ?? event) as Record<string, unknown>
+      try {
+        switch (event.type) {
+          case 'session.text.delta':
+          case 'session.reasoning.delta': {
+            const p = data as unknown as DeltaPayload
+            const buf = buffers.get(p.sessionID, p.assistantMessageID, p.ordinal)
+            buf.append(p.delta)
+            if (buf.needsCheck()) {
+              const stream = event.type === 'session.reasoning.delta' ? 'reasoning' : 'text'
+              await manager.onStreamText(p.sessionID, p.assistantMessageID, p.ordinal, buf.text(), stream)
+            }
+            break
+          }
+          case 'session.text.ended':
+          case 'session.reasoning.ended': {
+            const p = data as unknown as EndedPayload
+            buffers.drop(p.sessionID, p.assistantMessageID, p.ordinal)
+            break
+          }
+          case 'session.tool.input.started': {
+            const p = data as unknown as ToolInputStartedPayload
+            toolNames.set(`${p.sessionID}:${p.id}`, p.name)
+            break
+          }
+          case 'session.tool.called': {
+            const p = data as unknown as ToolCalledPayload
+            const name = toolNames.get(`${p.sessionID}:${p.id}`) ?? 'unknown'
+            manager.onToolCall(p.sessionID, name, p.input)
+            break
+          }
+          case 'session.deleted': {
+            const p = data as unknown as { sessionID: string }
+            manager.drop(p.sessionID)
+            buffers.dropSession(p.sessionID)
+            log(`watch dropped session=${p.sessionID}`)
+            break
+          }
+        }
+      } catch (cause) {
+        log(`event dispatch error type=${event.type}: ${cause}`)
+      }
     }
+  } finally {
+    await iterator.return?.().catch(() => {})
   }
 }

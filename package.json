@@ -1,11 +1,12 @@
 {
   "name": "opencode-loop-recover",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Loop guard for OpenCode: detects model repetition mid-stream, interrupts, prunes the poisoned context, and resumes the task automatically.",
   "type": "module",
   "exports": {
     "./server": "./dist/server.js",
     ".": "./dist/server.js",
+    "./gui-experimental": "./dist/gui-experimental.cjs",
     "./detect/detector": "./dist/detect/detector.js",
     "./detect/intent": "./dist/detect/intent.js",
     "./package.json": "./package.json"
@@ -21,7 +22,7 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.gui.json --noEmit && vite build",
     "prepare": "npm run build",
     "test": "node --test test/*.test.mjs",
     "check": "node --input-type=module -e \"import('./dist/server.js').then(m => { const d = m.default; if (!d || !d.id || typeof d.setup !== 'function') throw new Error('default {id,setup} 缺失'); console.log('OK', d.id) })\""
@@ -44,6 +45,11 @@
   "devDependencies": {
     "@opencode/plugin": "^2.2.5",
     "@types/node": "^26.6.6",
-    "typescript": "5.9"
+    "effect": "^4.0.6",
+    "jsonc-parser": "^3.3.1",
+    "solid-js": "^1.9.18",
+    "typescript": "5.9",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15"
   }
 }

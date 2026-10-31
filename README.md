@@ -68,6 +68,10 @@ To change the mode:
 }
 ```
 
+## Desktop settings page
+
+OpenCode Desktop can edit the configuration directly: **Settings → Loop Recover**. The page exposes every option — mode, language, rescue limits, temperature bump, per-detector switches, and the advanced thresholds. Changes are written back to the global `opencode.json` (comments preserved) and take effect automatically on reload. The TUI and the desktop app share the same configuration.
+
 ## What it detects
 
 - Repeated phrases or passages in generated text.

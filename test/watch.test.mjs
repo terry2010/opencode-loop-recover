@@ -109,22 +109,25 @@ test('runWatch: 单事件异常不中断循环', async () => {
   await runWatch({ events, ...d }, undefined) // 不抛即过
 })
 
-test('runWatch: abort 信号终止循环', async () => {
+test('runWatch: abort 唤醒挂起的 next()，teardown 可完成', async () => {
   const d = makeDeps()
   const ac = new AbortController()
-  let pushed = false
+  let returned = false
   const events = {
-    async *[Symbol.asyncIterator]() {
-      yield delta('s1', 'm1', 0, 'a')
-      pushed = true
-      await new Promise(() => {}) // 永不返回，等 abort 打断由外层测
+    [Symbol.asyncIterator]() {
+      return {
+        next: () => new Promise(() => {}), // 事件源永久挂起，不响应 abort
+        return: async () => {
+          returned = true
+          return { done: true, value: undefined }
+        },
+      }
     },
   }
   const done = runWatch({ events, ...d }, ac.signal)
   ac.abort()
-  // runWatch 返回与否取决于迭代器是否可中断——这里事件源不响应 abort，
-  // 循环挂在 for-await 上是可接受行为；仅验证 abort 不抛异常。
-  ac.abort()
-  assert.ok(pushed === false || pushed === true) // 仅断言无异常
-  void done
+  // 契约：cleanup 等待 runWatch 返回；挂起的事件源不得阻塞 teardown，
+  // 否则插件激活会永久卡死（真机事故）。
+  await done
+  assert.equal(returned, true)
 })
