@@ -1,6 +1,6 @@
 {
   "name": "opencode-loop-recover",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Loop guard for OpenCode: detects model repetition mid-stream, interrupts, prunes the poisoned context, and resumes the task automatically.",
   "type": "module",
   "exports": {

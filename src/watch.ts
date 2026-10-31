@@ -10,6 +10,9 @@ export interface EventLike {
 export interface WatchDeps {
   /** ctx.event.subscribe 返回的 AsyncIterable（或 Stream 适配后的可迭代对象） */
   events: AsyncIterable<EventLike>
+  /** 本插件实例所在 location（ctx.directory）。事件流是全局的：不匹配的事件跳过，
+   * 否则多 location 场景同一事件会被各实例并行救援（同一 session 被重复 interrupt/resume）。 */
+  directory?: string
   cfg: Config
   manager: RescueManager
   buffers: BufferPool
@@ -75,6 +78,8 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
       const step = aborted ? await Promise.race([iterator.next(), aborted]) : await iterator.next()
       if (step.done) return
       const event = step.value
+      const eventDir = (event as { location?: { directory?: string } }).location?.directory
+      if (deps.directory && eventDir && eventDir !== deps.directory) continue
       if (!seenTypes.has(event.type)) {
         seenTypes.add(event.type)
         const data = (event.data ?? event) as Record<string, unknown>

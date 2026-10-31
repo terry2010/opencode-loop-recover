@@ -109,6 +109,23 @@ test('runWatch: 单事件异常不中断循环', async () => {
   await runWatch({ events, ...d }, undefined) // 不抛即过
 })
 
+test('runWatch: 非本 location 的事件被跳过（多实例并行救援防护）', async () => {
+  const d = makeDeps()
+  let calls = 0
+  d.manager.onStreamText = async () => { calls++ }
+  const foreign = (text) => ({ type: 'session.text.delta', sessionID: 's1', assistantMessageID: 'm1', ordinal: 0, delta: text, location: { directory: '/other/workspace' } })
+  const mine = (text) => ({ type: 'session.text.delta', sessionID: 's1', assistantMessageID: 'm1', ordinal: 0, delta: text, location: { directory: '/my/workspace' } })
+  const events = {
+    async *[Symbol.asyncIterator]() {
+      yield foreign('a'.repeat(600)) // 别 location 的循环事件——必须被跳过
+      yield mine('b') // 本 location 的——正常处理
+    },
+  }
+  await runWatch({ events, directory: '/my/workspace', ...d }, undefined)
+  assert.equal(calls, 0) // foreign 的 600 字节重复未触发检测；mine 太短也不触发
+  assert.ok(d.buffers.get('s1', 'm1', 0).text().endsWith('b'))
+})
+
 test('runWatch: abort 唤醒挂起的 next()，teardown 可完成', async () => {
   const d = makeDeps()
   const ac = new AbortController()

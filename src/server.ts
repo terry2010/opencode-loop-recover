@@ -44,7 +44,8 @@ const plugin: Plugin.Plugin = {
     const lang = resolveLanguage(cfg.language)
     const i18n = strings(lang)
 
-    log(`setup mode=${cfg.mode} lang=${lang} app=${ctx.app.name}@${ctx.app.version}`)
+    const dir = (ctx as { location?: { directory?: string } }).location?.directory
+    log(`setup mode=${cfg.mode} lang=${lang} app=${ctx.app.name}@${ctx.app.version} dir=${dir ?? '?'}`)
 
     const ops: RescueOps = {
       interrupt: (sessionID) => ctx.session.interrupt({ sessionID }),
@@ -83,7 +84,7 @@ const plugin: Plugin.Plugin = {
 
       log('init: subscribing events')
       const events = ctx.event.subscribe({ types: [...WATCHED_TYPES] })
-      await runWatch({ events, cfg, manager, buffers, log }, abort.signal)
+      await runWatch({ events, directory: dir, cfg, manager, buffers, log }, abort.signal)
       log('init: event stream ended')
     })().catch((cause) => log(`init failed: ${cause}`))
 
