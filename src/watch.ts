@@ -59,10 +59,15 @@ interface ToolCalledPayload {
 export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<void> {
   const { events, manager, buffers, log } = deps
   const toolNames = new Map<string, string>()
+  const seenTypes = new Set<string>()
 
   // signal 只能在下一条事件到达后生效——事件源挂起时 for-await 挂起是预期行为
   for await (const event of events) {
     if (signal?.aborted) return
+    if (!seenTypes.has(event.type)) {
+      seenTypes.add(event.type)
+      log(`first event type=${event.type}`)
+    }
     // 事件信封：{id, created, type, location?, data}——业务字段在 data 里
     const data = (event.data ?? event) as Record<string, unknown>
     try {
