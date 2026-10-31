@@ -3,107 +3,118 @@
 [![npm](https://img.shields.io/npm/v/opencode-loop-recover)](https://www.npmjs.com/package/opencode-loop-recover)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**中文文档**：[README.zh-CN.md](https://github.com/terry2010/opencode-loop-recover/blob/master/README.zh-CN.md)
+**中文文档**：[README.zh-CN.md](README.zh-CN.md)
 
-Loop guard for OpenCode: detects model repetition mid-stream, interrupts the loop, prunes the poisoned context, and resumes the task automatically.
+**Stops your AI agent when it gets stuck repeating itself.**
 
-Local and small-parameter models can degrade into two pathological loop patterns during long tasks:
+If you run local or smaller models in OpenCode, you've probably seen this: the model starts writing the same sentence (or `ssssss…`) over and over, burning tokens until you manually stop it or the session dies.
 
-- **Literal collapse**: `ssssss...`, single-character or fixed-period token floods
-- **Semantic loops**: reasoning repeats the same analysis, or the agent re-issues the same tool query with reworded arguments
+This plugin watches what the model writes **as it writes it**. The moment it spots a repetition loop, it:
 
-Without intervention the loop burns tokens until the session dies. This plugin watches the stream, cuts the loop, removes the poisoned tail from the model's view, and continues the original task — no restart, no manual babysitting.
+1. **Stops** the runaway generation
+2. **Cleans up** — removes the repeated junk from the model's view of the conversation
+3. **Continues** the task automatically, with a nudge to try a different approach
 
-## How it works
-
-```
-model streams text
-   └─ session.text.delta / session.reasoning.delta → rolling buffer + detectors
-        └─ hit ─→ session.interrupt()           (cut)
-                → poison mark recorded           (fingerprint of the repeated tail)
-                → session.wait() → session.prompt()   (auto-resume)
-        next model request:
-                → context hook prunes the poisoned tail from messages
-                → system hint: don't repeat; keep language
-                → options temperature perturbation
-```
-
-Five detector layers plus intent-level tracking:
-
-| Detector | Catches |
-|---|---|
-| periodic | fixed-period text repeated ≥4 times |
-| charrun | single substantive char flood (`ssss…`) |
-| n-gram | 64-char block appearing ≥3 times in tail window |
-| anchor | large tail block re-appearing earlier |
-| pool | scattered short-sentence repetition |
-| intent | reworded-but-identical tool queries |
-
-## Modes
-
-- `rescue` (default): interrupt → prune → resume automatically
-- `cut`: interrupt only, hand back to the user
-- `observe`: detect and log, never intervene
+No restart. No babysitting. The session just keeps going.
 
 ## Install
 
+Add one line to your `opencode.json`:
+
 ```jsonc
-// opencode.json (or ~/.config/opencode/opencode.json)
 {
   "plugins": ["opencode-loop-recover"]
 }
 ```
 
-OpenCode installs npm plugins automatically at startup.
+That's it. OpenCode installs it automatically next time it starts.
 
-## Configuration
+## What it catches
 
-All options are optional; shown with defaults:
+- `ssssssss…` — character floods (a sign of model collapse)
+- The same sentence/paragraph repeated over and over
+- Thinking that goes in circles (repeating the same analysis)
+- The agent re-asking the same search/query with slightly different wording
+- Scattered short-sentence repetition spread across output
+
+## Three modes
+
+```jsonc
+{
+  "plugins": [{
+    "package": "opencode-loop-recover",
+    "options": { "mode": "rescue" }
+  }]
+}
+```
+
+| Mode | Behavior |
+|---|---|
+| `rescue` (default) | Stop the loop, clean up, auto-continue |
+| `cut` | Just stop — you take over |
+| `observe` | Watch and log only, never touch anything (good for testing) |
+
+## What you'll see
+
+When it fires, a marked message appears in the session:
+
+```
+⛑ [loop-recover] The previous output was detected as a repetition loop
+and has been interrupted and pruned. Continue the original task…
+```
+
+And it stops after several consecutive rescues in one session instead of fighting the model forever — you'll get a heads-up to intervene manually.
+
+## All options (with defaults)
 
 ```jsonc
 {
   "plugins": [{
     "package": "opencode-loop-recover",
     "options": {
-      "mode": "rescue",               // rescue | cut | observe
-      "detectors": {
+      "mode": "rescue",            // rescue | cut | observe
+      "detectors": {               // turn individual detectors on/off
         "periodic": true, "ngram": true, "anchor": true,
         "charrun": true, "pool": true, "intent": true
       },
-      "maxRescues": 3,                 // consecutive rescues per session before giving up
-      "bufferChars": 8192,             // rolling tail window fed to detectors
-      "keepLanguage": true,            // inject language-preserving hint after rescue
-      "language": "auto",              // auto | zh | en (auto falls back to en)
-      "temperatureBump": 0.3,          // perturbation on the request after rescue; 0 disables
-      "rescuePrompt": "…",             // custom resume instruction
-      "debugLog": false,               // false | "/path/to/loop-recover-debug.log"
-      "intent": {                      // intent-level detector options
+      "maxRescues": 3,             // give up after this many consecutive rescues
+      "bufferChars": 8192,         // how much recent output is analyzed
+      "keepLanguage": true,        // remind the model to keep its language
+      "language": "auto",          // auto | zh | en
+      "temperatureBump": 0.3,      // jitter added after rescue (0 = off)
+      "rescuePrompt": "…",         // custom "please continue" message
+      "debugLog": false,           // or "/path/to/debug.log" for troubleshooting
+      "intent": {                  // same-query detection for tools
         "toolPatterns": ["web_search"],
-        "stallLimit": 2,
-        "noveltyThreshold": 0.25,
-        "similarityThreshold": 0.5
-      },
-      "thresholds": { /* detector internals: ngramSize, periodRepeats, runMinChars, … */ }
+        "stallLimit": 2
+      }
     }
   }]
 }
 ```
 
-## Notes
+## What it doesn't do
 
-- The cut point is `session.interrupt` — the repeated text remains visible in the transcript briefly, but the **model never sees the poisoned tail again**: the `context` hook prunes it from `messages` on every subsequent request (non-destructive; disk history untouched).
-- After `maxRescues` consecutive rescues the plugin stops intervening for that session and injects a notice hint.
-- Auxiliary requests (title/summary/generate/compaction) are unaffected — loop watching is tied to real session output.
+- Doesn't flag repetition in shell output, files, or tool results — only what the **model itself generates**
+- Doesn't touch title/summary/side requests
+- Doesn't have a settings UI — all config lives in `opencode.json`
+
+## FAQ
+
+**Will it interrupt normal output?** Rarely — it needs several consecutive repeats of the same content before acting, and you can run `mode: "observe"` first to check for false positives in your workload.
+
+**Does it work with cloud models?** Yes, but it's mainly useful for local/small models that are prone to degeneration.
+
+**Does it change what's saved in the session?** The repeated text stays in your transcript, but the *model* never sees it again — it's trimmed from the context on every subsequent request.
 
 ## Development
 
 ```bash
-npm test          # node --test, detector + adapter + integration
-npm run build     # tsc → dist/
-npm run check     # verify default-export plugin shape
+npm test        # 78 tests: detectors, adapters, full recovery chain
+npm run build   # compile to dist/
 ```
 
-Design doc: [docs/design.md](docs/design.md). Detector core vendored from [dsh-loop-recover](https://github.com/terry2010/dsh-loop-recover).
+Design doc: [docs/design.md](docs/design.md). Detection core shared with [dsh-loop-recover](https://github.com/terry2010/dsh-loop-recover) (same thing for DeepSeek Harness).
 
 ## License
 
