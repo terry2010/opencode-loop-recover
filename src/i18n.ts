@@ -18,8 +18,8 @@ const ZH: Strings = {
     '[loop-recover] 上一次输出进入了重复循环。继续完成任务，但不要重复之前已经生成过的内容；' +
     '如果卡住，换一种思路或直接给出当前最优结果。请使用中文回复。',
   resumePrompt:
-    '刚才的输出检测到重复循环，已被中断并清理。请换一种思路继续完成原任务，' +
-    '不要重复之前已经生成过的内容。',
+    '⛑ [loop-recover] 刚才的输出检测到重复循环，已被中断并清理。' +
+    '请换一种思路继续完成原任务，不要重复之前已经生成过的内容。',
   giveUpHint:
     '[loop-recover] 连续多次检测到循环且救援未能收敛，已停止自动干预。请人工检查任务或更换模型。',
   prunedMarker: '…[loop-recover: 已截断重复内容]…',
@@ -32,8 +32,9 @@ const EN: Strings = {
     'repeating what was already generated; if stuck, change approach or give the best current answer. ' +
     'Reply in English.',
   resumePrompt:
-    'The previous output was detected as a repetition loop and has been interrupted and pruned. ' +
-    'Continue the original task with a different approach; do not repeat what was already generated.',
+    '⛑ [loop-recover] The previous output was detected as a repetition loop and has been ' +
+    'interrupted and pruned. Continue the original task with a different approach; ' +
+    'do not repeat what was already generated.',
   giveUpHint:
     '[loop-recover] Repeated loops detected and rescues did not converge; automatic intervention is ' +
     'now disabled for this session. Please review the task or switch model.',
