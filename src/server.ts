@@ -67,9 +67,11 @@ const plugin: Plugin.Plugin = {
     const abort = new AbortController()
     const registrations: Array<{ dispose(): Promise<void> }> = []
 
-    // 关键：setup 必须尽快 resolve——hook 注册/事件订阅若阻塞会拖死 location 激活
-    // （表现为 /api/model 等全 503）。全部挪到后台任务，逐步记日志定位卡点。
+    // 关键：冷启动期完全"装死"——setup 立即返回，所有宿主 API 调用推迟到激活稳定后。
+    // 激活期订阅可能回放积压事件并阻塞 fiber（/api/model 全 503 的根因猜测）。
     const init = (async () => {
+      await new Promise((r) => setTimeout(r, 3000))
+      if (abort.signal.aborted) return
       log('init: registering context hook')
       const reg = await Promise.race([
         ctx.session.hook('context', makeContextHook(cfg, manager, i18n, log) as never),
