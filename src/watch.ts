@@ -66,7 +66,8 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
     if (signal?.aborted) return
     if (!seenTypes.has(event.type)) {
       seenTypes.add(event.type)
-      log(`first event type=${event.type}`)
+      const data = (event.data ?? event) as Record<string, unknown>
+      log(`first event type=${event.type} keys=${Object.keys(data).join(',')} delta=${JSON.stringify(data.delta)?.slice(0, 60)}`)
     }
     // 事件信封：{id, created, type, location?, data}——业务字段在 data 里
     const data = (event.data ?? event) as Record<string, unknown>
