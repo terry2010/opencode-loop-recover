@@ -40,6 +40,7 @@ test('setup: 注册 context hook + 事件订阅，返回 cleanup', async () => {
   }
   const { ctx, calls, hooks } = makeCtx({ mode: 'rescue', debugLog: false }, events)
   const cleanup = await plugin.setup(ctx)
+  await new Promise((r) => setTimeout(r, 30)) // init 是后台任务
   assert.equal(typeof cleanup, 'function')
   assert.ok(calls.hooks.context, 'context hook 未注册')
   assert.deepEqual(calls.subTypes, [...(await import('../src/watch.ts')).WATCHED_TYPES])

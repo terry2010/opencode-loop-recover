@@ -64,21 +64,29 @@ const plugin: Plugin.Plugin = {
     const manager = new RescueManager(cfg, ops, lang, i18n)
     const buffers = new BufferPool(cfg.bufferChars)
 
+    const abort = new AbortController()
     const registrations: Array<{ dispose(): Promise<void> }> = []
 
-    registrations.push(
-      await ctx.session.hook('context', makeContextHook(cfg, manager, i18n, log) as never),
-    )
+    // 关键：setup 必须尽快 resolve——hook 注册/事件订阅若阻塞会拖死 location 激活
+    // （表现为 /api/model 等全 503）。全部挪到后台任务，逐步记日志定位卡点。
+    const init = (async () => {
+      log('init: registering context hook')
+      const reg = await Promise.race([
+        ctx.session.hook('context', makeContextHook(cfg, manager, i18n, log) as never),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('hook registration timeout')), 10000)),
+      ])
+      registrations.push(reg)
+      log('init: context hook registered')
 
-    const abort = new AbortController()
-    const events = ctx.event.subscribe({ types: [...WATCHED_TYPES] })
-    const loop = runWatch({ events, cfg, manager, buffers, log }, abort.signal).catch((cause) =>
-      log(`watch loop terminated: ${cause}`),
-    )
+      log('init: subscribing events')
+      const events = ctx.event.subscribe({ types: [...WATCHED_TYPES] })
+      await runWatch({ events, cfg, manager, buffers, log }, abort.signal)
+      log('init: event stream ended')
+    })().catch((cause) => log(`init failed: ${cause}`))
 
     return async () => {
       abort.abort()
-      await loop
+      await init
       for (const reg of registrations) await reg.dispose().catch(() => {})
       log('disposed')
     }
