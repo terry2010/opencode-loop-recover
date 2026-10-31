@@ -63,11 +63,13 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
   // signal 只能在下一条事件到达后生效——事件源挂起时 for-await 挂起是预期行为
   for await (const event of events) {
     if (signal?.aborted) return
+    // 事件信封：{id, created, type, location?, data}——业务字段在 data 里
+    const data = (event.data ?? event) as Record<string, unknown>
     try {
       switch (event.type) {
         case 'session.text.delta':
         case 'session.reasoning.delta': {
-          const p = event as unknown as DeltaPayload
+          const p = data as unknown as DeltaPayload
           const buf = buffers.get(p.sessionID, p.assistantMessageID, p.ordinal)
           buf.append(p.delta)
           if (buf.needsCheck()) {
@@ -77,23 +79,23 @@ export async function runWatch(deps: WatchDeps, signal?: AbortSignal): Promise<v
         }
         case 'session.text.ended':
         case 'session.reasoning.ended': {
-          const p = event as unknown as EndedPayload
+          const p = data as unknown as EndedPayload
           buffers.drop(p.sessionID, p.assistantMessageID, p.ordinal)
           break
         }
         case 'session.tool.input.started': {
-          const p = event as unknown as ToolInputStartedPayload
+          const p = data as unknown as ToolInputStartedPayload
           toolNames.set(`${p.sessionID}:${p.id}`, p.name)
           break
         }
         case 'session.tool.called': {
-          const p = event as unknown as ToolCalledPayload
+          const p = data as unknown as ToolCalledPayload
           const name = toolNames.get(`${p.sessionID}:${p.id}`) ?? 'unknown'
           manager.onToolCall(p.sessionID, name, p.input)
           break
         }
         case 'session.deleted': {
-          const p = event as unknown as { sessionID: string }
+          const p = data as unknown as { sessionID: string }
           manager.drop(p.sessionID)
           buffers.dropSession(p.sessionID)
           log(`watch dropped session=${p.sessionID}`)
