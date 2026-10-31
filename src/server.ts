@@ -70,7 +70,8 @@ const plugin: Plugin.Plugin = {
     // 关键：冷启动期完全"装死"——setup 立即返回，所有宿主 API 调用推迟到激活稳定后。
     // 激活期订阅可能回放积压事件并阻塞 fiber（/api/model 全 503 的根因猜测）。
     const init = (async () => {
-      await new Promise((r) => setTimeout(r, 3000))
+      const delay = typeof ctx.options?.initDelayMs === 'number' ? ctx.options.initDelayMs : 3000
+      await new Promise((r) => setTimeout(r, delay))
       if (abort.signal.aborted) return
       log('init: registering context hook')
       const reg = await Promise.race([

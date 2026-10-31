@@ -38,7 +38,7 @@ test('setup: 注册 context hook + 事件订阅，返回 cleanup', async () => {
   const events = {
     async *[Symbol.asyncIterator]() { /* 空流 */ },
   }
-  const { ctx, calls, hooks } = makeCtx({ mode: 'rescue', debugLog: false }, events)
+  const { ctx, calls, hooks } = makeCtx({ mode: 'rescue', debugLog: false, initDelayMs: 0 }, events)
   const cleanup = await plugin.setup(ctx)
   await new Promise((r) => setTimeout(r, 30)) // init 是后台任务
   assert.equal(typeof cleanup, 'function')
@@ -60,7 +60,7 @@ test('全链路：循环 delta → interrupt → wait → prompt → context 清
       await new Promise((r) => setTimeout(r, 50))
     },
   }
-  const { ctx, calls, hooks } = makeCtx({ mode: 'rescue' }, events)
+  const { ctx, calls, hooks } = makeCtx({ mode: 'rescue', initDelayMs: 0 }, events)
   const cleanup = await plugin.setup(ctx)
   // 等事件循环跑完
   await new Promise((r) => setTimeout(r, 120))
@@ -102,7 +102,7 @@ test('observe 模式：全链路不干预', async () => {
       }
     },
   }
-  const { ctx, calls } = makeCtx({ mode: 'observe' }, events)
+  const { ctx, calls } = makeCtx({ mode: 'observe', initDelayMs: 0 }, events)
   const cleanup = await plugin.setup(ctx)
   await new Promise((r) => setTimeout(r, 80))
   assert.equal(calls.interrupt.length, 0)
