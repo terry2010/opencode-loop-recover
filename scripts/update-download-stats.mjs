@@ -118,6 +118,7 @@ ${rows}
 
 const api = await fetchJson(API);
 const data = await loadData();
+const before = JSON.stringify(data.days);
 for (const { day, downloads } of api.downloads) {
   data.days[day] = Math.max(data.days[day] ?? 0, downloads);
 }
@@ -128,7 +129,10 @@ if (firstActive) {
   for (const d of Object.keys(data.days)) if (d < firstActive) delete data.days[d];
 }
 
-data.updated = new Date().toISOString();
+// 仅当数据变化时刷新 updated：否则文件字节不变，workflow 里 git diff 为空不提交
+if (JSON.stringify(data.days) !== before) {
+  data.updated = new Date().toISOString();
+}
 
 await mkdir(dirname(DATA_PATH), { recursive: true });
 await writeFile(DATA_PATH, JSON.stringify(data, null, 2) + '\n');
