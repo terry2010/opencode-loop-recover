@@ -1,6 +1,6 @@
 {
   "name": "opencode-loop-recover",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Loop guard for OpenCode: detects model repetition mid-stream, interrupts, prunes the poisoned context, and resumes the task automatically.",
   "type": "module",
   "exports": {
@@ -23,9 +23,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.gui.json --noEmit && vite build",
-    "prepare": "npm run build",
     "test": "node --test test/*.test.mjs",
-    "check": "node --input-type=module -e \"import('./dist/server.js').then(m => { const d = m.default; if (!d || !d.id || typeof d.setup !== 'function') throw new Error('default {id,setup} 缺失'); console.log('OK', d.id) })\""
+    "check": "node --input-type=module -e \"import('./dist/server.js').then(m => { const d = m.default; if (!d || !d.id || typeof d.setup !== 'function') throw new Error('default {id,setup} 缺失'); console.log('OK', d.id) })\"",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "opencode",
