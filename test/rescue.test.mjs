@@ -146,6 +146,23 @@ test('drop: 清理 session 状态', async () => {
   assert.equal(w.rescueCount, 0)
 })
 
+test('reasoning 流放宽阈值：模板判语枚举不误伤', async () => {
+  const { ops, calls } = makeOps()
+  const m = new RescueManager(resolveConfig(), ops, 'zh', strings('zh'))
+  const verdict = '该条与主题相关，需要引用'
+  const prefix = Array.from({ length: 30 }, (_, i) => `第${i}句：内容各异的正常前缀。`).join('')
+  const text = prefix + Array.from({ length: 6 }, (_, i) =>
+    `第${i}条证据分析：材料${i}号显示信号明确，时间戳${1000 + i * 137}，交叉比对结果一致。${verdict}。`).join('')
+  // text 流：默认阈值下判语 ×6 命中 pool → 触发救援
+  const textHit = await m.onStreamText('s1', 'm1', 0, text, 'text')
+  assert.ok(textHit)
+  assert.equal(calls.interrupt.length, 1)
+  // reasoning 流：放宽后 poolMinRepeats=8，×6 不达阈值 → 不命中
+  const rHit = await m.onStreamText('s2', 'm1', 0, text, 'reasoning')
+  assert.equal(rHit, null)
+  assert.equal(calls.interrupt.length, 1)
+})
+
 test('resuming 防抖：命中后 resume 只排一次', async () => {
   const { ops, calls } = makeOps()
   const m = new RescueManager(resolveConfig({ maxRescues: 5 }), ops, 'zh', strings('zh'))

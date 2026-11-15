@@ -1,10 +1,12 @@
 /**
  * dsh-loop-detector — 文本级重复检测器（纯函数，可离线单测）
  *
- * 三层检测，全部只看文本尾部窗口，避免长输出下的二次方开销：
+ * 五层检测，全部只看文本尾部窗口，避免长输出下的二次方开销：
  *   1. 周期扫描：尾部 N 个周期逐字符一致（周期 8..256）
- *   2. n-gram：最近窗口内 64 字符块出现 >= 3 次（步长抽样，允许不对齐）
- *   3. 大段锚段：尾部锚段在更早文本再现，并向前扩展 >= 锚段长度
+ *   2. n-gram：最近窗口内 64 字符块出现 >= 3 次（逐位采样，无对齐盲区）
+ *   3. 大段锚段：尾部锚段在更早文本再现
+ *   4. 单字符刷屏：尾部同一实义字符连续出现
+ *   5. 短句池：尾部窗口内同一短句反复出现
  *
  * 每一层都过一遍"实义字符"判据：只有标点/空白/符号构成的重复块（例如
  * markdown 分隔线 `|:---|:---|`、`--------`、`=====`）不算死循环，避免误伤。
@@ -23,7 +25,8 @@ export interface DetectorOptions {
   ngramRepeats: number
   /** n-gram 检测窗口（只看尾部这么多字符）。默认 2048 */
   ngramWindow: number
-  /** n-gram 抽样步长；越小越不容易漏检，越大越省 CPU。默认 16 */
+  /** n-gram 抽样步长；越小越不容易漏检，越大越省 CPU。默认 1（逐位采样——
+   *  步长 >1 时重复距离非步长倍数会整体漏检，窗口仅 2048 逐位成本可接受） */
   ngramStep: number
   /** 大段锚段长度。默认 512 */
   anchorSize: number
@@ -50,7 +53,7 @@ export const DEFAULT_DETECTOR: DetectorOptions = {
   ngramSize: 64,
   ngramRepeats: 3,
   ngramWindow: 2048,
-  ngramStep: 16,
+  ngramStep: 1,
   anchorSize: 512,
   anchorWindow: 8192,
   minDistinctChars: 2,
@@ -173,7 +176,7 @@ export function detectAnchor(text: string, options: DetectorOptions = DEFAULT_DE
   const idx = head.lastIndexOf(anchor)
   if (idx === -1) return null
 
-  // 向前扩展，量出真正重复了多长
+  // 向前扩展，量出真正重复了多长（锚段复现即命中；extended 只用于日志说明）
   let extended = size
   let i = idx - 1
   let j = window.length - size - 1
@@ -182,7 +185,6 @@ export function detectAnchor(text: string, options: DetectorOptions = DEFAULT_DE
     i--
     j--
   }
-  if (extended < size) return null
   // 重复段起点 = 第一次出现位置向前扩展后的起点（换算回全文坐标）
   const offset = text.length - window.length
   return {
@@ -194,24 +196,34 @@ export function detectAnchor(text: string, options: DetectorOptions = DEFAULT_DE
 }
 
 /**
- * 4) 单字符刷屏：尾部同一"实义"字符连续 >= runMinChars。
+ * 4) 单字符刷屏：尾部窗口内同一"实义"字符连续 >= runMinChars。
  * 覆盖 `next move is sssssss` 这类注意力坍缩——周期 1 被 minDistinctChars 过滤，
  * 但单个字母/数字/汉字刷几百字在真实输出里不可能是正常排版（`----` 等符号因非实义被排除）。
+ * 回扫整个尾部窗口（复用 poolWindow 作上界），而非只看最末尾——
+ * 刷屏后接几字正常尾文仍是循环证据。
  */
 export function detectCharRun(text: string, options: DetectorOptions = DEFAULT_DETECTOR): LoopHit | null {
-  let i = text.length - 1
-  if (i < 0 || i < options.runMinChars - 1) return null
-  const ch = text[i]
-  if (!SUBSTANTIVE.test(ch)) return null
-  while (i >= 0 && text[i] === ch) i--
-  const runLen = text.length - 1 - i
-  if (runLen < options.runMinChars) return null
-  return {
-    kind: 'charrun',
-    detail: `char-run repeat: '${ch}' x${runLen}`,
-    evidence: ch.repeat(Math.min(40, runLen)),
-    cutStart: i + 1,
+  const window = text.length > options.poolWindow ? text.slice(-options.poolWindow) : text
+  const offset = text.length - window.length
+  if (window.length < options.runMinChars) return null
+  let i = window.length - 1
+  while (i >= 0) {
+    const ch = window[i]!
+    if (!SUBSTANTIVE.test(ch)) { i--; continue }
+    let j = i
+    while (j >= 0 && window[j] === ch) j--
+    const runLen = i - j
+    if (runLen >= options.runMinChars) {
+      return {
+        kind: 'charrun',
+        detail: `char-run repeat: '${ch}' x${runLen}`,
+        evidence: ch.repeat(Math.min(40, runLen)),
+        cutStart: offset + j + 1,
+      }
+    }
+    i = j // 跳过已扫的 run
   }
+  return null
 }
 
 /**
@@ -222,8 +234,8 @@ export function detectCharRun(text: string, options: DetectorOptions = DEFAULT_D
 export function detectPoolRepeat(text: string, options: DetectorOptions = DEFAULT_DETECTOR): LoopHit | null {
   const window = text.length > options.poolWindow ? text.slice(-options.poolWindow) : text
   const offset = text.length - window.length
-  // 按句/行切分，归一化空白
-  const units = window.split(/[。！？!?\n;；]/)
+  // 按句/行切分，归一化空白；分隔集含中英文句读——漏了 `.` 会让英文复读句整段不切开
+  const units = window.split(/[。！？!?\n;；.]/)
   const counts = new Map<string, { n: number; first: number }>()
   let pos = 0
   for (const raw of units) {
@@ -235,6 +247,9 @@ export function detectPoolRepeat(text: string, options: DetectorOptions = DEFAUL
     if (e) {
       e.n++
       if (e.n >= options.poolMinRepeats) {
+        // cutStart 取首次出现位置（保守）：保证落盘文本不含该短句的任何重复；
+        // 代价是若该句早前有过合法提及，其与复读段之间的内容也一并剪除——
+        // 单点剪枝无法"只删散布重复、保留中间文本"，且续跑前上下文会被压缩兜底
         return {
           kind: 'pool',
           detail: `sentence pool repeat: '${u.slice(0, 30)}' x${e.n}`,
@@ -251,10 +266,11 @@ export function detectPoolRepeat(text: string, options: DetectorOptions = DEFAUL
 
 /**
  * 五层依次检测；命中第一层即返回。
- * 入口下限取"最小周期 × 重复次数"：更短的文本连最小周期都放不下，不必进入扫描。
+ * 入口下限只挡"短到不可能有循环"的文本——不能用 minPeriod*periodRepeats 联动，
+ * 否则用户调大周期阈值会连带关掉较短文本的 charrun/pool 层。
  */
 export function detectRepetition(text: string, options: DetectorOptions = DEFAULT_DETECTOR): LoopHit | null {
-  const floor = Math.max(32, options.minPeriod * options.periodRepeats)
+  const floor = 32
   if (text.length < floor) return null
   return detectPeriodic(text, options) ?? detectNgram(text, options)
     ?? detectAnchor(text, options) ?? detectCharRun(text, options)

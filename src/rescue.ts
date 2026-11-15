@@ -4,6 +4,8 @@ import {
   detectNgram,
   detectPeriodic,
   detectPoolRepeat,
+  resolveDetectorOptions,
+  type DetectorOptions,
   type LoopHit,
 } from './detect/detector.ts'
 import { IntentTracker, extractQueryText, matchesTool } from './detect/intent.ts'
@@ -49,9 +51,13 @@ export interface SessionWatch {
 const FINGERPRINT_CHARS = 64
 
 /** 按开关逐项跑检测器；返回第一个命中（周期类优先级高于池类）。 */
-export function runDetectors(text: string, cfg: Config): LoopHit | null {
+export function runDetectors(
+  text: string,
+  cfg: Config,
+  detector: DetectorOptions = cfg.detector,
+): LoopHit | null {
   const d = cfg.detectors
-  const o = cfg.detector
+  const o = detector
   if (d.periodic) {
     const hit = detectPeriodic(text, o)
     if (hit) return hit
@@ -115,6 +121,20 @@ export class RescueManager {
     return this.watches.get(sessionID)
   }
 
+  /**
+   * 推理块放宽阈值：逐条枚举分析时"该条相关/需要引用"式模板判语是正常文风而非死循环，
+   * 只抬下限不压低——用户显式调宽时尊重其配置（与 dsh-loop-recover 同策略）。
+   */
+  private detectorOptsFor(stream: 'text' | 'reasoning'): DetectorOptions {
+    const base = this.cfg.detector
+    if (stream !== 'reasoning') return base
+    return resolveDetectorOptions({
+      ...base,
+      poolMinRepeats: Math.max(base.poolMinRepeats, 8),
+      ngramRepeats: Math.max(base.ngramRepeats, 4),
+    })
+  }
+
   drop(sessionID: string): void {
     this.watches.delete(sessionID)
   }
@@ -130,7 +150,7 @@ export class RescueManager {
     text: string,
     stream: 'text' | 'reasoning' = 'text',
   ): Promise<LoopHit | null> {
-    const hit = runDetectors(text, this.cfg)
+    const hit = runDetectors(text, this.cfg, this.detectorOptsFor(stream))
     if (!hit) return null
 
     const w = this.watch(sessionID)

@@ -244,6 +244,8 @@ interface SessionWatch {
 - delta 事件增量喂检测器，命中即 `interrupt`
 - part 结束重置周期检测状态；池检测器跨 part 保留
 - 事件循环自 setup 里 `for await` 驱动，与插件生命周期同 scope
+- reasoning 流放宽阈值：`poolMinRepeats≥8`、`ngramRepeats≥4`——逐条枚举分析时
+  模板判语是正常文风而非死循环；text 流维持默认阈值（与 dsh 版同策略）
 
 ### 6.2 中毒标记与 context 清洗
 
@@ -283,7 +285,7 @@ TransformStream 对 SSE 流实时过滤，可实现与 dsh 完全等价的"中�
   "options": {
     "mode": "rescue",            // rescue | cut | observe，默认 rescue
     "detectors": { "periodic": true, "ngram": true, "anchor": true,
-                   "charRun": true, "pool": true, "intent": true },
+                   "charrun": true, "pool": true, "intent": true },
     "thresholds": { "...": "沿用 dsh 版默认值" },
     "maxRescues": 3,
     "rescuePrompt": "……续跑指令模板",
